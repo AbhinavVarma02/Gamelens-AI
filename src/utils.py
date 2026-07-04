@@ -87,8 +87,8 @@ class TrackingConfig:
     tracker: str = "bytetrack.yaml"    # Ultralytics ByteTrack config
     person_class_id: int = 0           # COCO 'person' class
     confidence: float = 0.3            # detection confidence threshold
-    frame_skip: int = 3                # process every Nth frame
-    max_width: int = 960               # shrink wide frames to this width
+    frame_skip: int = 8                # process every Nth frame
+    max_width: int = 640               # shrink wide frames to this width
     max_seconds: int = 120             # safety cap on video length processed
     # Spectator/stands filtering: the top of a broadcast frame is usually the
     # stands. Keep a detection only if y_center >= frame_height * this ratio.

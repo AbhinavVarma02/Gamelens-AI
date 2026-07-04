@@ -3,10 +3,9 @@ app.py
 ------
 GameLens AI - Gradio web app and entry point (local + Hugging Face Spaces).
 
-When the user clicks "Analyze Video":
-1. Uploaded clips run YOLO detection + ByteTrack tracking.
-2. The default sample option returns cached metrics/charts/report quickly.
-3. Optional sample reprocessing runs the same real pipeline as uploads.
+When the user clicks "Load Fast Sample Demo", cached metrics/charts/report
+return without YOLO. When the user clicks "Analyze Uploaded Video / Reprocess
+with YOLO", uploaded clips or explicit sample reprocessing run YOLO + ByteTrack.
 
 A separate "Ask" button answers questions using only the computed metrics.
 The app runs even without an OpenAI API key by showing rule-based text.
@@ -22,6 +21,8 @@ import traceback
 
 import gradio as gr
 
+print("GameLens AI app imported")
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 SAMPLE_VIDEO_PATH = PROJECT_ROOT / "sample_videos" / "default_soccer_clip.mp4"
 SAMPLE_OUTPUTS_DIR = PROJECT_ROOT / "sample_outputs"
@@ -34,6 +35,7 @@ SAMPLE_CHART_PATHS = [
     SAMPLE_OUTPUTS_DIR / "sample_chart_player_count.png",
     SAMPLE_OUTPUTS_DIR / "sample_chart_heatmap.png",
 ]
+SAMPLE_VIDEO_POINTER_MAX_BYTES = 1024
 
 # --- UI theme (visual only; no effect on the pipeline) -----------------
 THEME = gr.themes.Soft(
@@ -249,12 +251,13 @@ FOOTER_HTML = (
 )
 
 METRICS_PLACEHOLDER = (
-    "_Upload a clip and click **Analyze Video** — your match metrics will appear here._"
+    "_Load the fast sample demo or run real YOLO analysis — your match metrics will appear here._"
 )
 REPORT_PLACEHOLDER = (
-    "_The AI match report (Data Analyst + Sports Insight) will appear here after analysis._"
+    "_The cached or generated match report will appear here after analysis._"
 )
-ANSWER_PLACEHOLDER = "_Analyze a clip, then ask a question to see the answer here._"
+ANSWER_PLACEHOLDER = "_Load the fast sample demo or analyze a clip, then ask a question to see the answer here._"
+STATUS_PLACEHOLDER = "_Ready._"
 
 
 
@@ -295,7 +298,7 @@ def _metrics_to_markdown(m: dict) -> str:
 
 
 def _sample_error(message: str):
-    return (None, message, "", [], "", None, None)
+    return (None, f"**Status:** {message}", "", "", [], "", None, None)
 
 
 def _display_path(path: Path) -> str:
@@ -305,34 +308,62 @@ def _display_path(path: Path) -> str:
         return str(path)
 
 
-def _load_cached_sample_outputs():
-    """Return cached sample outputs without importing YOLO/OpenCV/LangGraph."""
+def _sample_video_preview_path() -> tuple[str | None, str | None]:
+    """Return a preview path when the sample MP4 is present and materialized."""
     if not SAMPLE_VIDEO_PATH.exists():
-        return _sample_error(
-            "The sample soccer clip is not available. Upload your own video, "
-            "or add sample_videos/default_soccer_clip.mp4 to this app."
+        return None, (
+            "Sample video preview is unavailable because "
+            "sample_videos/default_soccer_clip.mp4 is missing."
         )
+    try:
+        size = SAMPLE_VIDEO_PATH.stat().st_size
+    except OSError:
+        return None, "Sample video preview is unavailable right now."
+    if size <= SAMPLE_VIDEO_POINTER_MAX_BYTES:
+        return None, (
+            "Sample video preview appears to be a storage pointer rather than "
+            "the materialized MP4. Cached metrics/charts/report are still shown."
+        )
+    return str(SAMPLE_VIDEO_PATH), None
 
+
+def load_cached_sample_demo():
+    """Return the fast sample demo without queueing or heavy imports.
+
+    This function only reads cached JSON/CSV/TXT/PNG files and optionally
+    returns the sample MP4 path as a preview. It must not import or call the
+    real YOLO/OpenCV/LangGraph pipeline.
+    """
     required = [SAMPLE_METRICS_PATH, SAMPLE_TRACKING_CSV_PATH,
                 SAMPLE_REPORT_PATH, *SAMPLE_CHART_PATHS]
     missing = [_display_path(p) for p in required if not p.exists()]
     if missing:
         return _sample_error(
             "The cached sample outputs are unavailable. Missing: "
-            f"{', '.join(missing)}. Upload a video, or select Reprocess sample "
-            "with YOLO if the sample clip is available."
+            f"{', '.join(missing)}. Upload a video, or reprocess the sample "
+            "with YOLO after the sample MP4 is available."
         )
 
-    metrics = json.loads(SAMPLE_METRICS_PATH.read_text(encoding="utf-8"))
-    report_md = SAMPLE_REPORT_PATH.read_text(encoding="utf-8")
+    try:
+        metrics = json.loads(SAMPLE_METRICS_PATH.read_text(encoding="utf-8"))
+        report_md = SAMPLE_REPORT_PATH.read_text(encoding="utf-8")
+    except Exception as exc:
+        return _sample_error(f"Could not load cached sample outputs: {exc}")
+
+    preview_path, preview_warning = _sample_video_preview_path()
+    status = "Using cached sample outputs. No YOLO processing."
+    if preview_warning:
+        status = f"{status} {preview_warning}"
+
     metrics_md = (
-        "**Cached sample demo:** showing the original sample clip as the video "
-        "preview (not an annotated output). Uploaded videos and reprocessed "
-        "samples run YOLO + ByteTrack and produce annotated output.\n\n"
+        "**Cached sample demo:** showing precomputed sample metrics, charts, "
+        "report text, and downloads. Uploaded videos and sample reprocessing "
+        "use the real YOLO + ByteTrack pipeline.\n\n"
         + _metrics_to_markdown(metrics)
     )
     return (
-        str(SAMPLE_VIDEO_PATH),
+        preview_path,
+        status,
         metrics_md,
         report_md,
         [str(p) for p in SAMPLE_CHART_PATHS],
@@ -390,45 +421,56 @@ def _run_real_analysis(selected_video_path, frame_skip, max_width, confidence,
     with open(output_path(REPORT_TXT_NAME), "w", encoding="utf-8") as f:
         f.write(report_md)
 
-    return (annotated_path, _metrics_to_markdown(metrics), report_md, charts,
-            "", metrics, [csv_path, json_path])
+    return (
+        annotated_path,
+        "Finished real YOLO processing. First run may take longer because model weights may download.",
+        _metrics_to_markdown(metrics),
+        report_md,
+        charts,
+        "",
+        metrics,
+        [csv_path, json_path],
+    )
 
 
-def analyze_video(video_path, use_sample_video, reprocess_sample, frame_skip,
-                  max_width, confidence, field_roi_top_ratio, min_track_frames):
-    """Main pipeline callback.
+def real_processing_status(video_path, reprocess_sample):
+    if video_path or reprocess_sample:
+        return (
+            "Running real YOLO processing. First run may take longer because "
+            "model weights may download."
+        )
+    return "Upload a video, click Load Fast Sample Demo, or enable sample reprocessing."
 
-    Uploads always run the real YOLO + ByteTrack pipeline. The built-in sample
-    uses cached outputs by default so CPU Spaces can return a fast demo.
-    """
+
+def analyze_real_video(video_path, reprocess_sample, frame_skip, max_width,
+                       confidence, field_roi_top_ratio, min_track_frames):
+    """Queued real YOLO + ByteTrack path for uploads or explicit reprocessing."""
     try:
         if video_path:
             return _run_real_analysis(
                 str(video_path), frame_skip, max_width, confidence,
                 field_roi_top_ratio, min_track_frames)
 
-        if use_sample_video:
-            if reprocess_sample:
-                if not SAMPLE_VIDEO_PATH.exists():
-                    return _sample_error(
-                        "The sample soccer clip is not available. Upload your "
-                        "own video, or add sample_videos/default_soccer_clip.mp4 "
-                        "to this app."
-                    )
-                return _run_real_analysis(
-                    str(SAMPLE_VIDEO_PATH), frame_skip, max_width, confidence,
-                    field_roi_top_ratio, min_track_frames)
-            return _load_cached_sample_outputs()
+        if reprocess_sample:
+            if not SAMPLE_VIDEO_PATH.exists():
+                return _sample_error(
+                    "The sample soccer clip is not available. Upload your own "
+                    "video, or add sample_videos/default_soccer_clip.mp4 to this app."
+                )
+            return _run_real_analysis(
+                str(SAMPLE_VIDEO_PATH), frame_skip, max_width, confidence,
+                field_roi_top_ratio, min_track_frames)
 
         return _sample_error(
-            "Please upload a soccer video first, or select Use sample soccer clip."
+            "Upload a video, click Load Fast Sample Demo, or enable Reprocess "
+            "sample with YOLO."
         )
 
     except ValueError as exc:
-        return _sample_error(f"{exc}")
+        return _sample_error(f"Real YOLO processing could not continue: {exc}")
     except Exception as exc:  # unexpected - log to console, show short message
         traceback.print_exc()
-        return _sample_error(f"Something went wrong while analyzing: {exc}")
+        return _sample_error(f"Real YOLO processing failed: {exc}")
 
 
 def ask_question(question, metrics):
@@ -472,17 +514,19 @@ def build_ui() -> gr.Blocks:
                     gr.HTML('<div class="gl-card-title gl-step">'
                             '<span class="gl-step-num">1</span> Upload clip</div>')
                     video_in = gr.Video(label="Soccer clip (.mp4, ~30-90s)")
-                    use_sample = gr.Checkbox(
-                        label="Use sample soccer clip",
-                        value=False,
-                        info="Uses cached sample outputs for a fast CPU demo unless reprocessing is enabled.",
+                    gr.Markdown(
+                        "Fast sample demo uses cached outputs and does not run YOLO. "
+                        "Real YOLO processing can take several minutes on Hugging Face CPU."
                     )
-                    reprocess_sample = gr.Checkbox(
-                        label="Reprocess sample with YOLO",
-                        value=False,
-                        info="Slower on CPU; runs the same real pipeline used for uploaded clips.",
-                    )
+                    fast_sample_btn = gr.Button(
+                        "Load Fast Sample Demo", variant="primary", size="lg",
+                        elem_classes="gl-cta")
                     with gr.Accordion("Advanced options", open=False):
+                        reprocess_sample = gr.Checkbox(
+                            label="Reprocess sample with YOLO",
+                            value=False,
+                            info="Slower on CPU; runs the same real pipeline used for uploaded clips.",
+                        )
                         frame_skip = gr.Slider(
                             1, 10, value=8, step=1,
                             label="Process every Nth frame",
@@ -506,13 +550,17 @@ def build_ui() -> gr.Blocks:
                             info="A field track segment must appear in at least this "
                                  "many processed frames")
                     analyze_btn = gr.Button(
-                        "Analyze Video", variant="primary", size="lg",
-                        elem_classes="gl-cta")
+                        "Analyze Uploaded Video / Reprocess with YOLO",
+                        variant="secondary", size="lg")
             with gr.Column(scale=1):
                 with gr.Group(elem_classes="gl-card"):
                     gr.HTML('<div class="gl-card-title gl-step">'
                             '<span class="gl-step-num">2</span> Annotated video</div>')
                     video_out = gr.Video(label="Video preview / annotated output", interactive=False)
+
+        with gr.Group(elem_classes="gl-card"):
+            gr.HTML('<div class="gl-card-title">Status</div>')
+            status_md = gr.Markdown(STATUS_PLACEHOLDER)
 
         with gr.Group(elem_classes="gl-card"):
             gr.HTML('<div class="gl-card-title">Match metrics</div>')
@@ -554,14 +602,30 @@ def build_ui() -> gr.Blocks:
 
         gr.HTML(FOOTER_HTML)
 
-        analyze_btn.click(
-            analyze_video,
+        analysis_outputs = [
+            video_out, status_md, metrics_md, report_md, gallery, answer_md,
+            metrics_state, files_out,
+        ]
+        fast_sample_btn.click(
+            load_cached_sample_demo,
+            inputs=None,
+            outputs=analysis_outputs,
+            queue=False,
+        )
+        analyze_event = analyze_btn.click(
+            real_processing_status,
+            inputs=[video_in, reprocess_sample],
+            outputs=[status_md],
+            queue=False,
+        )
+        analyze_event.then(
+            analyze_real_video,
             inputs=[
-                video_in, use_sample, reprocess_sample, frame_skip, max_width,
-                confidence, field_roi, min_track,
+                video_in, reprocess_sample, frame_skip, max_width, confidence,
+                field_roi, min_track,
             ],
-            outputs=[video_out, metrics_md, report_md, gallery, answer_md,
-                     metrics_state, files_out],
+            outputs=analysis_outputs,
+            queue=True,
         )
         ask_btn.click(
             ask_question,
@@ -571,10 +635,18 @@ def build_ui() -> gr.Blocks:
         return demo
 
 
+demo = build_ui()
+print("Gradio demo built")
+print("Fast cached sample route ready")
+
+
 def launch_app(**kwargs):
-    """Build and launch the app, applying the theme/CSS the right way for the
-    installed Gradio version."""
-    return build_ui().launch(**_theme_css_for_launch(), **kwargs)
+    """Launch the top-level demo for local runs."""
+    launch_kwargs = _theme_css_for_launch()
+    if "ssr_mode" in inspect.signature(gr.Blocks.launch).parameters:
+        launch_kwargs["ssr_mode"] = False
+    launch_kwargs.update(kwargs)
+    return demo.launch(**launch_kwargs)
 
 
 if __name__ == "__main__":

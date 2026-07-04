@@ -1,7 +1,7 @@
 # GameLens AI Progress
 
 ## Current Status
-Working, verified MVP on Python 3.13. Hugging Face Spaces performance recovery is prepared: startup imports are lighter, the sample demo uses cached outputs by default, and uploaded clips still use the real YOLO + ByteTrack pipeline.
+Working, verified MVP locally; Hugging Face Spaces runtime recovery is prepared. README metadata pins Python 3.11, the app exposes a top-level `demo`, the fast sample demo has its own non-queued cached-only button, and uploaded clips/sample reprocessing remain on the queued YOLO + ByteTrack path.
 
 The core pipeline is built and mostly working:
 - Gradio app entry point: `app.py`
@@ -20,11 +20,14 @@ The core pipeline is built and mostly working:
 - Dependencies were cleaned up for one OpenCV package, `lap`, `imageio`, and `imageio-ffmpeg`.
 - UI emoji cleanup was completed for app UI text: the only app UI emoji is the main heading `GameLens AI` soccer-ball heading.
 - Final readiness cleanup removed player-centric Q&A examples/comments/README wording, renamed the top-active chart artifact to `chart_top_track_segments.png`, and prepared generated local artifacts for removal.
-- Added an MVP sample-video option: users can upload their own clip or select `Use sample soccer clip`; uploads take priority, and missing sample files return a friendly error.
+- Added an MVP sample-video option, later hardened into a dedicated `Load Fast Sample Demo` button that uses cached outputs without YOLO.
 - Polished AI report/Q&A wording to avoid broad phrases like "dynamic environment" and prefer "field detections visible on screen" where it improves honesty.
 - Added cached sample-output mode for Hugging Face CPU Spaces: default sample analysis returns precomputed metrics/charts/report/downloads quickly, while uploads and optional sample reprocessing still run YOLO + ByteTrack.
 - Moved heavy app imports for analytics, OpenCV/YOLO tracking, Matplotlib charts, and LangGraph report/Q&A behind click-time paths instead of importing them during Gradio startup.
 - Changed real-processing defaults to CPU-friendlier values: frame skip 8 and max width 640, with sliders still adjustable.
+- Split the Gradio events so `Load Fast Sample Demo` calls a cached-only `load_cached_sample_demo()` with `queue=False`; real uploads/sample reprocessing use `Analyze Uploaded Video / Reprocess with YOLO` and remain queued.
+- Added top-level `demo = build_ui()` plus minimal startup prints so Hugging Face can find the app object directly.
+- Added `python_version: 3.11` to the Hugging Face Space YAML metadata.
 
 ## Important Decisions
 - This is an MVP for short soccer clips, not a full match-analysis system.
@@ -70,7 +73,7 @@ Final review completed on 2026-07-04, then rerun after the sample-video MVP addi
 - Safe import/UI smoke with `PYTHON_DOTENV_DISABLED=1` and empty `OPENAI_API_KEY`: OK
 - Gradio Blocks build: OK (`43` blocks)
 - Friendly callback checks: OK (`analyze_video` with no upload asks for upload or sample selection; missing sample path returns a friendly message)
-- Upload priority check: OK (a provided upload path is used even when `Use sample soccer clip` is selected)
+- Upload priority check: superseded by the split-button UI; uploaded videos use only the real YOLO path, while the fast sample has its own non-queued button
 - Default sample path check: OK (`sample_videos/default_soccer_clip.mp4` is selected when no upload is provided and the checkbox is selected)
 - No-key LLM fallback: OK (`generate_report` used deterministic fallback text in smoke checks)
 - Local Gradio launch smoke from previous final review: OK (`http://127.0.0.1:7861/` returned HTTP 200, then server closed)
@@ -92,6 +95,28 @@ Latest deployment recovery:
 - Verified safe UI import/build with `.venv`, `PYTHON_DOTENV_DISABLED=1`, and empty `OPENAI_API_KEY`: OK (`43` blocks).
 - `.env` was not read or edited.
 
+
+Latest Hugging Face runtime fix:
+- Root cause addressed: the cached sample path no longer shares the queued real-YOLO callback.
+- Added dedicated `load_cached_sample_demo()` that only reads cached sample files and optional sample-preview path.
+- Added dedicated `Load Fast Sample Demo` button with `queue=False`.
+- Renamed the real-processing button to `Analyze Uploaded Video / Reprocess with YOLO`; its real analysis callback remains queued.
+- Added a status output so cached sample mode returns `Using cached sample outputs. No YOLO processing.` and real mode reports the slower YOLO path.
+- Exposed top-level `demo = build_ui()` for Hugging Face Spaces and kept local launch under `if __name__ == "__main__"` with `ssr_mode=False` when supported.
+- Added README YAML `python_version: 3.11` for a safer HF runtime.
+- Updated shared `TrackingConfig` defaults to frame skip 8 and max width 640.
+- Validation: `python -m compileall app.py src` OK.
+- Validation: top-level `demo` import OK (`47` Gradio blocks); startup prints are present.
+- Validation: direct `load_cached_sample_demo()` runtime was `0.0005` seconds locally and returned 8 outputs.
+- Validation: cached sample import pollution check OK; no `ultralytics`, `torch`, `cv2`, `matplotlib`, `langgraph`, `src.detect_track`, or `src.video_processor` were imported.
+- Validation: Gradio dependency config shows `load_cached_sample_demo` has `queue=False`; `analyze_real_video` has `queue=True`.
+- Validation: upload and sample-reprocess paths were monkeypatched and both routed to the real-analysis function; no-upload/no-reprocess returns a friendly error.
+- Validation: cached missing-video warning still returns cached metrics/charts/report; missing cached file returns a friendly error.
+- Validation: no-key cached Q&A fallback answered from cached metrics.
+- Validation: dependency check OK; `opencv-python` present and `opencv-python-headless` absent; `packages.txt` has `libgl1` and `libglib2.0-0`.
+- Validation: shutdown-code scan found no `sys.exit`, `os._exit`, `demo.close`, server shutdown, or kill calls in app/source/docs.
+- Validation: UI emoji check OK; only the soccer-ball symbol appears in `app.py`.
+- `.env` was not read or edited.
 
 Latest Hugging Face performance fix:
 - Added `sample_outputs/` with cached sample metrics, tracking CSV, charts, and report text.

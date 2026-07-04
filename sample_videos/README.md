@@ -4,7 +4,7 @@ This folder documents one small demo clip for users who do not have a soccer vid
 
 - `default_soccer_clip.mp4`
 
-In the Gradio UI, upload your own clip or select **Use sample soccer clip** before clicking **Analyze Video**. Uploaded videos always take priority over the sample. The default sample path uses cached outputs from `sample_outputs/` for speed on Hugging Face CPU Spaces; select **Reprocess sample with YOLO** only when you want to run the full detector/tracker on this sample clip.
+In the Gradio UI, click **Load Fast Sample Demo** to use cached outputs from `sample_outputs/` without running YOLO. Uploaded videos use the separate **Analyze Uploaded Video / Reprocess with YOLO** button. Select **Reprocess sample with YOLO** in Advanced options only when you want to run the full detector/tracker on this sample clip.
 
 The sample video is intentionally **not committed as a normal Git blob**. For Hugging Face Spaces, upload it separately with Hugging Face Hub/Xet-compatible storage at this exact path:
 

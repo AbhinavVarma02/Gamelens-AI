@@ -5,6 +5,7 @@ colorFrom: green
 colorTo: blue
 sdk: gradio
 app_file: app.py
+python_version: 3.11
 pinned: false
 ---
 
@@ -35,7 +36,7 @@ an over-engineered research system.
 
 ## Features
 
-- **Video upload** through a Gradio interface, plus a fast cached sample demo for CPU Spaces.
+- **Video upload** through a Gradio interface, plus a fast cached sample demo button for CPU Spaces.
 - **Player detection & tracking** with YOLOv8 (nano) + ByteTrack.
 - **Spectator filtering (field ROI)** — detections in the top of the frame
   (the stands) are ignored, so crowds don't inflate the counts.
@@ -106,13 +107,15 @@ Report + Q&A shown in Gradio UI       ── app.py
 
 ## How It Works
 
-1. **Cached sample path:** selecting **Use sample soccer clip** uses
-   precomputed sample outputs by default, so Hugging Face CPU Spaces can show
-   metrics, charts, report text, downloads, and the sample preview quickly.
-   Select **Reprocess sample with YOLO** only when you want to run the real
-   pipeline on the sample clip.
-2. **Uploaded-video path:** read the clip with OpenCV; optionally shrink wide
-   frames and process every Nth frame for speed.
+1. **Fast sample path:** click **Load Fast Sample Demo** to read only the
+   precomputed files in `sample_outputs/`. This non-queued path does not run
+   YOLO, OpenCV video processing, Matplotlib chart generation, OpenAI, or
+   LangGraph, so Hugging Face CPU Spaces can show metrics, charts, report text,
+   downloads, and the sample preview quickly.
+2. **Real YOLO path:** click **Analyze Uploaded Video / Reprocess with YOLO**
+   with an uploaded clip, or enable **Reprocess sample with YOLO** in Advanced
+   options. This queued path reads the clip with OpenCV, optionally shrinks wide
+   frames, and processes every Nth frame for speed.
 3. **Track** the `person` class with YOLOv8n + ByteTrack.
 4. **Filter spectators (field ROI)** — YOLO detects *all* humans, including
    people in the stands. Detections whose center is above
@@ -230,9 +233,9 @@ python app.py
 ```
 
 Open the local URL that Gradio prints (usually `http://127.0.0.1:7860`),
-upload a short soccer clip or select **Use sample soccer clip**, then click **Analyze Video**. The sample option uses cached outputs by default for a fast demo; select **Reprocess sample with YOLO** to run the full detector/tracker on the sample clip.
+click **Load Fast Sample Demo** for the cached sample, or upload a short soccer clip and click **Analyze Uploaded Video / Reprocess with YOLO**. To run the full detector/tracker on the sample clip, open Advanced options, enable **Reprocess sample with YOLO**, then click the real-processing button.
 
-> The first real upload/reprocess run downloads the small `yolov8n.pt` weights automatically.
+> The first real upload/reprocess run downloads the small `yolov8n.pt` weights automatically. Hugging Face metadata pins Python 3.11 because it is safer for this CV/Gradio/Ultralytics stack than Python 3.13.
 > Without an `OPENAI_API_KEY`, the app still works and shows grounded,
 > rule-based text instead of GPT-4o Mini output.
 
@@ -256,7 +259,7 @@ upload a short soccer clip or select **Use sample soccer clip**, then click **An
 5. **Add your secret**: in the Space -> *Settings* -> *Variables and secrets*,
    add `OPENAI_API_KEY` (and optionally `OPENAI_MODEL=gpt-4o-mini`).
 6. **Run the app.** The Space builds automatically; then upload a short clip
-   and analyze. Users without their own clip can select **Use sample soccer clip**
+   and analyze. Users without their own clip can click **Load Fast Sample Demo**
    for a cached CPU-friendly demo.
 
 > Notes: `packages.txt` installs the system libraries OpenCV needs on a

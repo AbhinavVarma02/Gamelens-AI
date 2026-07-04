@@ -4,7 +4,7 @@ This folder documents one small demo clip for users who do not have a soccer vid
 
 - `default_soccer_clip.mp4`
 
-In the Gradio UI, upload your own clip or select **Use sample soccer clip** before clicking **Analyze Video**. Uploaded videos always take priority over the sample.
+In the Gradio UI, upload your own clip or select **Use sample soccer clip** before clicking **Analyze Video**. Uploaded videos always take priority over the sample. The default sample path uses cached outputs from `sample_outputs/` for speed on Hugging Face CPU Spaces; select **Reprocess sample with YOLO** only when you want to run the full detector/tracker on this sample clip.
 
 The sample video is intentionally **not committed as a normal Git blob**. For Hugging Face Spaces, upload it separately with Hugging Face Hub/Xet-compatible storage at this exact path:
 
@@ -12,7 +12,7 @@ The sample video is intentionally **not committed as a normal Git blob**. For Hu
 hf upload abhinavvathadi/gamelens-ai sample_videos/default_soccer_clip.mp4 sample_videos/default_soccer_clip.mp4 --repo-type space
 ```
 
-The app uses the same path locally and on the Space: `sample_videos/default_soccer_clip.mp4`.
+The app uses the same video path locally and on the Space: `sample_videos/default_soccer_clip.mp4`. Cached sample metrics, charts, report text, and downloads live in `sample_outputs/` and are committed as lightweight Git files.
 
 ## Adding Local Clips
 

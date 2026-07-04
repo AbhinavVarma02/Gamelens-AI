@@ -1,0 +1,54 @@
+{
+  "video_duration_seconds": 20.0,
+  "frames_processed": 400,
+  "field_roi_top_ratio": 0.35,
+  "min_track_frames": 10,
+  "raw_track_ids_created": 90,
+  "field_track_ids_created": 86,
+  "distinct_stable_tracks": 56,
+  "estimated_players_on_screen": 15,
+  "avg_players_on_screen": 11.5,
+  "peak_players_on_screen": 15,
+  "most_active_track_segment": "Track Segment 1",
+  "most_active_track_segment_id": 1,
+  "most_active_track_segment_movement_pixels": 877.9,
+  "top_active_track_segments": [
+    {
+      "segment": "Track Segment 1",
+      "track_id": 1,
+      "movement_pixels": 877.9
+    },
+    {
+      "segment": "Track Segment 17",
+      "track_id": 77,
+      "movement_pixels": 746.4
+    },
+    {
+      "segment": "Track Segment 8",
+      "track_id": 10,
+      "movement_pixels": 661.4
+    },
+    {
+      "segment": "Track Segment 39",
+      "track_id": 186,
+      "movement_pixels": 572.3
+    },
+    {
+      "segment": "Track Segment 4",
+      "track_id": 4,
+      "movement_pixels": 515.6
+    }
+  ],
+  "total_movement_pixels_all_segments": 10970.9,
+  "activity_by_zone": {
+    "Left": 5174.3,
+    "Middle": 5543.5,
+    "Right": 867.0
+  },
+  "highest_activity_zone": "Middle",
+  "most_active_time_segment": "0s to 5s",
+  "player_count_trend": "stable",
+  "avg_pixel_speed_px_per_s": 48.5,
+  "activity_level": "Medium",
+  "measurement_note": "Counts are subtle with tracking. 'raw_track_ids_created' is every ID the tracker produced (including brief detections and anyone in the stands within view), so it is NOT a headcount. 'distinct_stable_tracks' counts field-area IDs that lasted at least 'min_track_frames' frames, but this still OVER-counts real players because ByteTrack assigns a NEW id to a player after occlusion or after leaving and re-entering the frame (there is no re-identification). The realistic number of players is 'estimated_players_on_screen' (the peak number tracked at the same time), with 'avg_players_on_screen' as the average. Movement is in image pixels, not meters. Track Segment 1, Track Segment 2, ... are clean labels for stable track SEGMENTS, not confirmed players (one player can span several segments) and not jersey numbers or identities. The system does not track the ball or classify teams, so movement in a zone or by a segment can only indicate higher movement / positioning activity, not plays, possession, attacking or defending."
+}

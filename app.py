@@ -4,10 +4,9 @@ app.py
 GameLens AI - Gradio web app and entry point (local + Hugging Face Spaces).
 
 When the user clicks "Analyze Video":
-1. Run YOLO detection + ByteTrack tracking on the uploaded clip.
-2. Build tracking_data.csv and metrics.json.
-3. Draw charts (zone activity, top track segments, players-on-screen, heatmap).
-4. Ask the LangGraph agents for a grounded match report.
+1. Uploaded clips run YOLO detection + ByteTrack tracking.
+2. The default sample option returns cached metrics/charts/report quickly.
+3. Optional sample reprocessing runs the same real pipeline as uploads.
 
 A separate "Ask" button answers questions using only the computed metrics.
 The app runs even without an OpenAI API key by showing rule-based text.
@@ -16,34 +15,25 @@ The app runs even without an OpenAI API key by showing rule-based text.
 from __future__ import annotations
 
 import inspect
+import json
+import os
 from pathlib import Path
 import traceback
 
 import gradio as gr
 
-from src.analytics import (
-    build_tracking_dataframe,
-    compute_metrics,
-    metrics_to_markdown,
-    save_metrics_json,
-    save_tracking_csv,
-)
-from src.detect_track import run_detection_and_tracking
-from src.langgraph_agents import answer_question, generate_report
-from src.utils import (
-    ANNOTATED_VIDEO_NAME,
-    METRICS_JSON_NAME,
-    REPORT_TXT_NAME,
-    TRACKING_CSV_NAME,
-    TrackingConfig,
-    ensure_output_dir,
-    has_openai_key,
-    output_path,
-)
-from src.visualizations import generate_all_charts
-
 PROJECT_ROOT = Path(__file__).resolve().parent
 SAMPLE_VIDEO_PATH = PROJECT_ROOT / "sample_videos" / "default_soccer_clip.mp4"
+SAMPLE_OUTPUTS_DIR = PROJECT_ROOT / "sample_outputs"
+SAMPLE_METRICS_PATH = SAMPLE_OUTPUTS_DIR / "sample_metrics.json"
+SAMPLE_TRACKING_CSV_PATH = SAMPLE_OUTPUTS_DIR / "sample_tracking_data.csv"
+SAMPLE_REPORT_PATH = SAMPLE_OUTPUTS_DIR / "sample_report.txt"
+SAMPLE_CHART_PATHS = [
+    SAMPLE_OUTPUTS_DIR / "sample_chart_zone_activity.png",
+    SAMPLE_OUTPUTS_DIR / "sample_chart_top_track_segments.png",
+    SAMPLE_OUTPUTS_DIR / "sample_chart_player_count.png",
+    SAMPLE_OUTPUTS_DIR / "sample_chart_heatmap.png",
+]
 
 # --- UI theme (visual only; no effect on the pipeline) -----------------
 THEME = gr.themes.Soft(
@@ -267,80 +257,178 @@ REPORT_PLACEHOLDER = (
 ANSWER_PLACEHOLDER = "_Analyze a clip, then ask a question to see the answer here._"
 
 
-def _resolve_video_path(video_path, use_sample_video: bool,
-                        sample_path: Path = SAMPLE_VIDEO_PATH):
-    """Choose the uploaded clip first, then the bundled sample if requested."""
-    if video_path:
-        return str(video_path), None
-    if use_sample_video:
-        if sample_path.exists():
-            return str(sample_path), None
-        return None, (
-            "The sample soccer clip is not available. Please upload your own "
-            "video, or add sample_videos/default_soccer_clip.mp4 to this app."
+
+def _has_openai_key() -> bool:
+    """Check Space/local env vars without importing dotenv during UI startup."""
+    return bool(os.getenv("OPENAI_API_KEY", "").strip())
+
+
+def _metrics_to_markdown(m: dict) -> str:
+    """Render metrics without importing pandas-heavy analytics at startup."""
+    lines = [
+        "### Match Metrics",
+        f"- **Duration:** {m.get('video_duration_seconds', 0)} s "
+        f"({m.get('frames_processed', 0)} frames processed)",
+        f"- **Players visible on screen:** ~{m.get('avg_players_on_screen', 0)} on "
+        f"average, peak {m.get('peak_players_on_screen', 0)} "
+        "_(realistic count)_",
+        f"- **Distinct stable tracks:** {m.get('distinct_stable_tracks', 0)} "
+        "_(upper bound - one player can span several IDs after occlusion)_",
+        f"- **Raw track IDs created:** {m.get('raw_track_ids_created', 0)} "
+        "_(tracker artifact - includes brief detections & anyone in view)_",
+        f"- **Most active track segment:** {m.get('most_active_track_segment', 'N/A')}",
+        f"- **Highest activity zone:** {m.get('highest_activity_zone', 'N/A')}",
+        f"- **Most active time segment:** {m.get('most_active_time_segment', 'N/A')}",
+        f"- **Player count trend:** {m.get('player_count_trend', 'unknown')}",
+        f"- **Overall movement level:** {m.get('activity_level', 'Unknown')} "
+        f"(~{m.get('avg_pixel_speed_px_per_s', 0)} px/s average pixel movement)",
+    ]
+    zones = m.get("activity_by_zone", {})
+    if zones:
+        z = ", ".join(f"{k}: {v}" for k, v in zones.items())
+        lines.append(f"- **Field activity by zone (pixels):** {z}")
+    roi, mtf = m.get("field_roi_top_ratio"), m.get("min_track_frames")
+    if roi is not None or mtf is not None:
+        lines.append(
+            f"- **Filters:** field ROI top ratio = {roi}, min track frames = {mtf}")
+    return "\n".join(lines)
+
+
+def _sample_error(message: str):
+    return (None, message, "", [], "", None, None)
+
+
+def _display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(PROJECT_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _load_cached_sample_outputs():
+    """Return cached sample outputs without importing YOLO/OpenCV/LangGraph."""
+    if not SAMPLE_VIDEO_PATH.exists():
+        return _sample_error(
+            "The sample soccer clip is not available. Upload your own video, "
+            "or add sample_videos/default_soccer_clip.mp4 to this app."
         )
-    return None, (
-        "Please upload a soccer video first, or select Use sample soccer clip."
+
+    required = [SAMPLE_METRICS_PATH, SAMPLE_TRACKING_CSV_PATH,
+                SAMPLE_REPORT_PATH, *SAMPLE_CHART_PATHS]
+    missing = [_display_path(p) for p in required if not p.exists()]
+    if missing:
+        return _sample_error(
+            "The cached sample outputs are unavailable. Missing: "
+            f"{', '.join(missing)}. Upload a video, or select Reprocess sample "
+            "with YOLO if the sample clip is available."
+        )
+
+    metrics = json.loads(SAMPLE_METRICS_PATH.read_text(encoding="utf-8"))
+    report_md = SAMPLE_REPORT_PATH.read_text(encoding="utf-8")
+    metrics_md = (
+        "**Cached sample demo:** showing the original sample clip as the video "
+        "preview (not an annotated output). Uploaded videos and reprocessed "
+        "samples run YOLO + ByteTrack and produce annotated output.\n\n"
+        + _metrics_to_markdown(metrics)
+    )
+    return (
+        str(SAMPLE_VIDEO_PATH),
+        metrics_md,
+        report_md,
+        [str(p) for p in SAMPLE_CHART_PATHS],
+        "",
+        metrics,
+        [str(SAMPLE_TRACKING_CSV_PATH), str(SAMPLE_METRICS_PATH)],
     )
 
 
-def analyze_video(video_path, use_sample_video, frame_skip, max_width, confidence,
-                  field_roi_top_ratio, min_track_frames):
+def _run_real_analysis(selected_video_path, frame_skip, max_width, confidence,
+                       field_roi_top_ratio, min_track_frames):
+    """Run the real CV pipeline. Heavy imports stay inside this path."""
+    from src.analytics import (
+        build_tracking_dataframe,
+        compute_metrics,
+        save_metrics_json,
+        save_tracking_csv,
+    )
+    from src.detect_track import run_detection_and_tracking
+    from src.langgraph_agents import generate_report
+    from src.utils import (
+        ANNOTATED_VIDEO_NAME,
+        METRICS_JSON_NAME,
+        REPORT_TXT_NAME,
+        TRACKING_CSV_NAME,
+        TrackingConfig,
+        ensure_output_dir,
+        output_path,
+    )
+    from src.visualizations import generate_all_charts
+
+    ensure_output_dir()
+    config = TrackingConfig(
+        frame_skip=int(frame_skip),
+        max_width=int(max_width),
+        confidence=float(confidence),
+        field_roi_top_ratio=float(field_roi_top_ratio),
+        min_track_frames=int(min_track_frames),
+    )
+
+    annotated_path = output_path(ANNOTATED_VIDEO_NAME)
+    rows, info = run_detection_and_tracking(
+        selected_video_path, annotated_path, config)
+
+    df = build_tracking_dataframe(rows, info["processed_width"],
+                                  config.min_track_frames)
+    csv_path = save_tracking_csv(df, output_path(TRACKING_CSV_NAME))
+
+    metrics = compute_metrics(df, info)
+    json_path = save_metrics_json(metrics, output_path(METRICS_JSON_NAME))
+
+    charts = generate_all_charts(df, metrics, info)
+
+    report_md = generate_report(metrics)["report"]
+    with open(output_path(REPORT_TXT_NAME), "w", encoding="utf-8") as f:
+        f.write(report_md)
+
+    return (annotated_path, _metrics_to_markdown(metrics), report_md, charts,
+            "", metrics, [csv_path, json_path])
+
+
+def analyze_video(video_path, use_sample_video, reprocess_sample, frame_skip,
+                  max_width, confidence, field_roi_top_ratio, min_track_frames):
     """Main pipeline callback.
 
-    Returns 7 values matching the analyze outputs:
-    (annotated_video, metrics_markdown, report_markdown, charts,
-     qa_answer_reset, metrics_state, download_files)
+    Uploads always run the real YOLO + ByteTrack pipeline. The built-in sample
+    uses cached outputs by default so CPU Spaces can return a fast demo.
     """
-    selected_video_path, selection_error = _resolve_video_path(
-        video_path, bool(use_sample_video))
-    if selection_error:
-        return (None, selection_error, "", [], "", None, None)
-
     try:
-        ensure_output_dir()
-        config = TrackingConfig(
-            frame_skip=int(frame_skip),
-            max_width=int(max_width),
-            confidence=float(confidence),
-            field_roi_top_ratio=float(field_roi_top_ratio),
-            min_track_frames=int(min_track_frames),
+        if video_path:
+            return _run_real_analysis(
+                str(video_path), frame_skip, max_width, confidence,
+                field_roi_top_ratio, min_track_frames)
+
+        if use_sample_video:
+            if reprocess_sample:
+                if not SAMPLE_VIDEO_PATH.exists():
+                    return _sample_error(
+                        "The sample soccer clip is not available. Upload your "
+                        "own video, or add sample_videos/default_soccer_clip.mp4 "
+                        "to this app."
+                    )
+                return _run_real_analysis(
+                    str(SAMPLE_VIDEO_PATH), frame_skip, max_width, confidence,
+                    field_roi_top_ratio, min_track_frames)
+            return _load_cached_sample_outputs()
+
+        return _sample_error(
+            "Please upload a soccer video first, or select Use sample soccer clip."
         )
 
-        # 1) Detection + tracking -> annotated video + field rows (spectators
-        #    above the field ROI line are ignored).
-        annotated_path = output_path(ANNOTATED_VIDEO_NAME)
-        rows, info = run_detection_and_tracking(
-            selected_video_path, annotated_path, config)
-
-        # 2) Structured data (adds zone, movement, stability + clean labels).
-        df = build_tracking_dataframe(rows, info["processed_width"],
-                                      config.min_track_frames)
-        csv_path = save_tracking_csv(df, output_path(TRACKING_CSV_NAME))
-
-        # 3) Metrics.
-        metrics = compute_metrics(df, info)
-        json_path = save_metrics_json(metrics, output_path(METRICS_JSON_NAME))
-
-        # 4) Charts.
-        charts = generate_all_charts(df, metrics, info)
-
-        # 5) LLM report (LangGraph agents, with safe fallback).
-        report_md = generate_report(metrics)["report"]
-        with open(output_path(REPORT_TXT_NAME), "w", encoding="utf-8") as f:
-            f.write(report_md)
-
-        metrics_md = metrics_to_markdown(metrics)
-        return (annotated_path, metrics_md, report_md, charts, "", metrics,
-                [csv_path, json_path])
-
     except ValueError as exc:
-        # Expected / friendly errors (bad video, no detections).
-        return (None, f"{exc}", "", [], "", None, None)
+        return _sample_error(f"{exc}")
     except Exception as exc:  # unexpected - log to console, show short message
         traceback.print_exc()
-        return (None, f"Something went wrong while analyzing: {exc}", "", [],
-                "", None, None)
+        return _sample_error(f"Something went wrong while analyzing: {exc}")
 
 
 def ask_question(question, metrics):
@@ -350,6 +438,8 @@ def ask_question(question, metrics):
     if not (question or "").strip():
         return "Please type a question."
     try:
+        from src.langgraph_agents import answer_question
+
         return answer_question(metrics, question)
     except Exception as exc:  # never crash the UI on a bad question
         return f"Could not answer right now: {exc}"
@@ -371,7 +461,7 @@ def _theme_css_for_blocks() -> dict:
 def build_ui() -> gr.Blocks:
     with gr.Blocks(title="GameLens AI", **_theme_css_for_blocks()) as demo:
         gr.HTML(HERO_HTML)
-        if not has_openai_key():
+        if not _has_openai_key():
             gr.HTML(NOTICE_HTML)
 
         metrics_state = gr.State()
@@ -385,16 +475,22 @@ def build_ui() -> gr.Blocks:
                     use_sample = gr.Checkbox(
                         label="Use sample soccer clip",
                         value=False,
+                        info="Uses cached sample outputs for a fast CPU demo unless reprocessing is enabled.",
+                    )
+                    reprocess_sample = gr.Checkbox(
+                        label="Reprocess sample with YOLO",
+                        value=False,
+                        info="Slower on CPU; runs the same real pipeline used for uploaded clips.",
                     )
                     with gr.Accordion("Advanced options", open=False):
                         frame_skip = gr.Slider(
-                            1, 10, value=3, step=1,
+                            1, 10, value=8, step=1,
                             label="Process every Nth frame",
-                            info="Higher = faster, but less smooth tracking")
+                            info="Higher = faster on CPU, but less smooth tracking")
                         max_width = gr.Slider(
-                            320, 1280, value=960, step=32,
+                            320, 1280, value=640, step=32,
                             label="Max frame width",
-                            info="Smaller = faster processing")
+                            info="Smaller = faster on CPU; increase for higher quality")
                         confidence = gr.Slider(
                             0.1, 0.7, value=0.3, step=0.05,
                             label="Detection confidence",
@@ -416,7 +512,7 @@ def build_ui() -> gr.Blocks:
                 with gr.Group(elem_classes="gl-card"):
                     gr.HTML('<div class="gl-card-title gl-step">'
                             '<span class="gl-step-num">2</span> Annotated video</div>')
-                    video_out = gr.Video(label="Detections + raw track IDs", interactive=False)
+                    video_out = gr.Video(label="Video preview / annotated output", interactive=False)
 
         with gr.Group(elem_classes="gl-card"):
             gr.HTML('<div class="gl-card-title">Match metrics</div>')
@@ -461,8 +557,8 @@ def build_ui() -> gr.Blocks:
         analyze_btn.click(
             analyze_video,
             inputs=[
-                video_in, use_sample, frame_skip, max_width, confidence,
-                field_roi, min_track,
+                video_in, use_sample, reprocess_sample, frame_skip, max_width,
+                confidence, field_roi, min_track,
             ],
             outputs=[video_out, metrics_md, report_md, gallery, answer_md,
                      metrics_state, files_out],

@@ -35,7 +35,7 @@ an over-engineered research system.
 
 ## Features
 
-- **Video upload** through a Gradio interface, plus an optional bundled sample clip.
+- **Video upload** through a Gradio interface, plus a fast cached sample demo for CPU Spaces.
 - **Player detection & tracking** with YOLOv8 (nano) + ByteTrack.
 - **Spectator filtering (field ROI)** — detections in the top of the frame
   (the stands) are ignored, so crowds don't inflate the counts.
@@ -45,7 +45,9 @@ an over-engineered research system.
   **track segments** (Track Segment 1, 2, …) rather than implying real
   identities.
 - **Annotated H.264 video** (browser-playable via bundled ffmpeg) with
-  bounding boxes, raw track IDs, a field-ROI line, and a live field count.
+  bounding boxes, raw track IDs, a field-ROI line, and a live field count for
+  uploaded clips and reprocessed samples. The default sample demo shows the
+  original clip preview with cached metrics/charts for speed.
 - **Structured dataset** (`tracking_data.csv`) with frame, timestamp,
   track ID, bounding-box coordinates, center point, box size, zone, per-frame
   movement in pixels, plus `is_stable` and `display_id` (clean label).
@@ -78,7 +80,7 @@ an over-engineered research system.
 ## Architecture
 
 ```text
-User uploads or selects sample soccer video (Gradio)
+User uploads video or selects cached sample demo (Gradio)
         │
         ▼
 OpenCV read + resize + frame skip     ── src/video_processor.py
@@ -104,24 +106,29 @@ Report + Q&A shown in Gradio UI       ── app.py
 
 ## How It Works
 
-1. **Read** the clip with OpenCV; optionally shrink wide frames and process
-   every Nth frame for speed.
-2. **Track** the `person` class with YOLOv8n + ByteTrack.
-3. **Filter spectators (field ROI)** — YOLO detects *all* humans, including
+1. **Cached sample path:** selecting **Use sample soccer clip** uses
+   precomputed sample outputs by default, so Hugging Face CPU Spaces can show
+   metrics, charts, report text, downloads, and the sample preview quickly.
+   Select **Reprocess sample with YOLO** only when you want to run the real
+   pipeline on the sample clip.
+2. **Uploaded-video path:** read the clip with OpenCV; optionally shrink wide
+   frames and process every Nth frame for speed.
+3. **Track** the `person` class with YOLOv8n + ByteTrack.
+4. **Filter spectators (field ROI)** — YOLO detects *all* humans, including
    people in the stands. Detections whose center is above
    `field_roi_top_ratio × frame_height` (the top of the frame) are dropped, so
    only field-area detections are kept.
-4. **Structure** the field detections into a tidy CSV, adding a
+5. **Structure** the field detections into a tidy CSV, adding a
    left/middle/right `zone` and per-frame `movement_pixels`.
-5. **Find stable track segments** — a track ID that appears in at least
+6. **Find stable track segments** — a track ID that appears in at least
    `min_track_frames` processed frames is a *stable field track segment*; each
    gets a neutral sequential label (`display_id` = Track Segment 1, 2, …).
    Short-lived / flickering IDs are excluded from segment-level metrics.
-6. **Analyze** with Pandas/NumPy → `metrics.json`. Segment-level metrics use
+7. **Analyze** with Pandas/NumPy → `metrics.json`. Segment-level metrics use
    stable field tracks; spatial metrics (zone, heatmap) use all field
    detections; both raw and stable counts are reported.
-7. **Visualize** the metrics as Matplotlib charts.
-8. **Explain** the metrics with three LangGraph agents that only see the
+8. **Visualize** the metrics as Matplotlib charts.
+9. **Explain** the metrics with three LangGraph agents that only see the
    structured numbers, then answer user questions from the same metrics.
 
 ### How many players? (raw IDs vs. stable tracks vs. on-screen)
@@ -185,6 +192,12 @@ gamelens-ai/
 ├── sample_videos/             # Local sample clip + notes
 │   ├── README.md
 │   └── default_soccer_clip.mp4 # Uploaded separately to HF Space storage
+├── sample_outputs/            # Cached sample metrics/charts/report for fast demo
+│   ├── README.md
+│   ├── sample_metrics.json
+│   ├── sample_tracking_data.csv
+│   ├── sample_report.txt
+│   └── sample_chart_*.png
 ├── outputs/                   # Generated artifacts (git-ignored)
 │   └── .gitkeep
 └── notebooks/
@@ -217,9 +230,9 @@ python app.py
 ```
 
 Open the local URL that Gradio prints (usually `http://127.0.0.1:7860`),
-upload a short soccer clip or select **Use sample soccer clip**, then click **Analyze Video**.
+upload a short soccer clip or select **Use sample soccer clip**, then click **Analyze Video**. The sample option uses cached outputs by default for a fast demo; select **Reprocess sample with YOLO** to run the full detector/tracker on the sample clip.
 
-> The first run downloads the small `yolov8n.pt` weights automatically.
+> The first real upload/reprocess run downloads the small `yolov8n.pt` weights automatically.
 > Without an `OPENAI_API_KEY`, the app still works and shows grounded,
 > rule-based text instead of GPT-4o Mini output.
 
@@ -228,8 +241,9 @@ upload a short soccer clip or select **Use sample soccer clip**, then click **An
 1. **Create a new Space** at <https://huggingface.co/new-space>.
 2. **Select the Gradio SDK.**
 3. **Push the repo files** (`app.py`, `requirements.txt`, `packages.txt`,
-   `README.md`, `src/`, `sample_videos/README.md`, `notebooks/README.md`, and
-   `outputs/.gitkeep`). Do **not** commit `.mp4` videos as normal Git blobs.
+   `README.md`, `src/`, `sample_videos/README.md`, `sample_outputs/`,
+   `notebooks/README.md`, and `outputs/.gitkeep`). Do **not** commit `.mp4`
+   videos as normal Git blobs.
 4. **Upload the sample video separately** with Hugging Face Hub/Xet-compatible
    storage so it lands at the same path the app expects:
 
@@ -242,12 +256,14 @@ upload a short soccer clip or select **Use sample soccer clip**, then click **An
 5. **Add your secret**: in the Space -> *Settings* -> *Variables and secrets*,
    add `OPENAI_API_KEY` (and optionally `OPENAI_MODEL=gpt-4o-mini`).
 6. **Run the app.** The Space builds automatically; then upload a short clip
-   and analyze. Users without their own clip can select **Use sample soccer clip**.
+   and analyze. Users without their own clip can select **Use sample soccer clip**
+   for a cached CPU-friendly demo.
 
 > Notes: `packages.txt` installs the system libraries OpenCV needs on a
-> headless Space (`libgl1`, `libglib2.0-0`). CPU Spaces work for short clips —
-> increase *frame skip* and lower *max width* in the Advanced options if
-> processing is slow.
+> headless Space (`libgl1`, `libglib2.0-0`). The cached sample path avoids
+> YOLO startup/processing for the default demo. Uploaded clips still run the
+> real YOLO + ByteTrack pipeline and may be slow on CPU Basic; keep *frame skip*
+> high and *max width* low for faster processing.
 
 ## Troubleshooting
 

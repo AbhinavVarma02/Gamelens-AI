@@ -1,7 +1,7 @@
 # GameLens AI Progress
 
 ## Current Status
-Working, verified MVP on Python 3.13. Hugging Face Spaces deployment recovery is prepared after normal Git rejected the sample MP4 blob.
+Working, verified MVP on Python 3.13. Hugging Face Spaces performance recovery is prepared: startup imports are lighter, the sample demo uses cached outputs by default, and uploaded clips still use the real YOLO + ByteTrack pipeline.
 
 The core pipeline is built and mostly working:
 - Gradio app entry point: `app.py`
@@ -22,6 +22,9 @@ The core pipeline is built and mostly working:
 - Final readiness cleanup removed player-centric Q&A examples/comments/README wording, renamed the top-active chart artifact to `chart_top_track_segments.png`, and prepared generated local artifacts for removal.
 - Added an MVP sample-video option: users can upload their own clip or select `Use sample soccer clip`; uploads take priority, and missing sample files return a friendly error.
 - Polished AI report/Q&A wording to avoid broad phrases like "dynamic environment" and prefer "field detections visible on screen" where it improves honesty.
+- Added cached sample-output mode for Hugging Face CPU Spaces: default sample analysis returns precomputed metrics/charts/report/downloads quickly, while uploads and optional sample reprocessing still run YOLO + ByteTrack.
+- Moved heavy app imports for analytics, OpenCV/YOLO tracking, Matplotlib charts, and LangGraph report/Q&A behind click-time paths instead of importing them during Gradio startup.
+- Changed real-processing defaults to CPU-friendlier values: frame skip 8 and max width 640, with sliders still adjustable.
 
 ## Important Decisions
 - This is an MVP for short soccer clips, not a full match-analysis system.
@@ -57,6 +60,7 @@ The core pipeline is built and mostly working:
 | src/langgraph_agents.py | Report and Q&A workflow with fallbacks | Updated |
 | sample_videos/README.md | Local sample-video note | Updated |
 | sample_videos/default_soccer_clip.mp4 | Demo clip under 8 MB; upload separately to Hugging Face Space storage, not normal Git | Local only / HF storage |
+| sample_outputs/ | Cached sample metrics, tracking CSV, charts, and report for fast sample demo | Created |
 | notebooks/README.md | Optional notebook note | Created |
 | outputs/.gitkeep | Keeps outputs folder in repo | Created |
 
@@ -86,6 +90,22 @@ Latest deployment recovery:
 - Removed `sample_videos/default_soccer_clip.mp4` from normal Git tracking while keeping the local file in place.
 - Verified `python -m compileall app.py src`: OK.
 - Verified safe UI import/build with `.venv`, `PYTHON_DOTENV_DISABLED=1`, and empty `OPENAI_API_KEY`: OK (`43` blocks).
+- `.env` was not read or edited.
+
+
+Latest Hugging Face performance fix:
+- Added `sample_outputs/` with cached sample metrics, tracking CSV, charts, and report text.
+- Default sample mode now returns cached outputs and the original sample preview without loading YOLO/OpenCV/LangGraph.
+- Added optional `Reprocess sample with YOLO` checkbox for users who want the real sample pipeline.
+- Uploaded videos still run the real YOLO + ByteTrack pipeline.
+- CPU-friendly real-processing defaults are now frame skip 8 and max width 640.
+- Validation: `python -m compileall app.py src` OK.
+- Validation: safe UI build with `PYTHON_DOTENV_DISABLED=1` and empty `OPENAI_API_KEY` OK (`44` blocks).
+- Validation: cached sample mode returned immediately with 4 charts, metrics, report text, CSV/JSON downloads, and no `ultralytics`, `torch`, `cv2`, `matplotlib`, or `langgraph` imports.
+- Validation: upload and sample reprocess paths were monkeypatched and both routed to the real-analysis function.
+- Validation: no-key cached Q&A fallback answered from cached metrics.
+- Validation: dependency check OK; `opencv-python` present and `opencv-python-headless` absent; `packages.txt` has `libgl1` and `libglib2.0-0`.
+- Validation: UI emoji check OK; only the soccer-ball symbol appears in `app.py`.
 - `.env` was not read or edited.
 
 ## Known Remaining Limitations

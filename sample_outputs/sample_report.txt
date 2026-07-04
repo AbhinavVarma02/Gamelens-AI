@@ -1,0 +1,12 @@
+## Cached Sample Report
+
+**Data Analyst**
+
+Based on the cached tracking metrics, this sample clip is about 20 seconds long. The tracker created 90 raw IDs and 56 distinct stable track segments, but those values over-count real players because tracker IDs can fragment after occlusion or re-entry. A more realistic view is about 11.5 field detections visible on screen on average, with a peak of 15. Track Segment 1 showed the most pixel movement, and the middle third of the frame had the highest movement activity.
+
+**Sports Insight**
+
+- Based on the cached tracking data, the middle third of the frame had the highest pixel movement, which may suggest higher movement or positioning activity there.
+- Track Segment 1 had the highest segment-level pixel movement in this sample cache.
+- The busiest cached time slice is 0s to 5s.
+- These are pixel-movement observations only. The system does not track the ball, teams, possession, passes, shots, or tactics.

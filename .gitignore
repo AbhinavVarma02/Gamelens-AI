@@ -1,0 +1,49 @@
+# --- Secrets / environment ---------------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Python ------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Virtual environments ---------------------------------------------
+.venv/
+venv/
+env/
+
+# --- Model weights (downloaded automatically at runtime) --------------
+*.pt
+*.onnx
+*.engine
+
+# --- Generated outputs (keep the folder, ignore its contents) ---------
+outputs/*
+!outputs/.gitkeep
+
+# --- Large media / videos ---------------------------------------------
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+sample_videos/*.mp4
+outputs/*.mp4
+generated_videos/
+generated_videos/*.mp4
+sample_videos/*
+!sample_videos/
+!sample_videos/README.md
+
+# --- Original project scope (keep local, do not push) -----------------
+GameLens_AI_Project_Scope*.md
+
+# --- OS / editor / local tooling --------------------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.claude/

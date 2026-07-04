@@ -1,0 +1,32 @@
+# GameLens AI - Python dependencies
+# Kept intentionally small so it installs cleanly on Hugging Face Spaces.
+
+# Computer vision + detection/tracking.
+# IMPORTANT: use only ONE OpenCV distribution. ultralytics depends on
+# opencv-python, so we pin that one and do NOT also add opencv-python-headless
+# - having both installed causes DLL/OpenMP conflicts and random crashes on
+# Windows. On Hugging Face Spaces, packages.txt installs the system libs that
+# opencv-python needs (libGL, libglib).
+ultralytics>=8.1.0
+opencv-python>=4.8.0
+lap>=0.5.12            # linear-assignment solver required by ByteTrack tracking
+
+# Browser-playable H.264 annotated video without a system ffmpeg / OpenH264.
+# The imageio-ffmpeg wheel bundles a static ffmpeg build that includes libx264.
+imageio>=2.34.0
+imageio-ffmpeg>=0.5.1
+
+# Data science
+pandas>=2.0.0
+numpy>=1.24.0
+
+# Charts (Matplotlib is enough for the MVP charts)
+matplotlib>=3.7.0
+
+# LLM orchestration + provider
+langgraph>=0.2.0
+openai>=1.30.0
+
+# Web UI + config
+gradio>=4.44.0
+python-dotenv>=1.0.0

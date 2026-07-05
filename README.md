@@ -321,13 +321,6 @@ click **Load Fast Sample Demo** for the cached sample, or upload a short soccer 
 - Optional ball detection.
 - LangSmith tracing for the agent workflow.
 
-## Resume Bullet
-
-> Built **GameLens AI**, a Hugging Face-deployed soccer video analytics app
-> using YOLOv8, ByteTrack, OpenCV, Pandas, and LangGraph to convert match
-> clips into structured player-tracking data, generate movement and
-> zone-based analytics with charts, and produce grounded, GPT-4o Mini
-> coach-style insights and Q&A through a Gradio interface.
 
 ## License
 

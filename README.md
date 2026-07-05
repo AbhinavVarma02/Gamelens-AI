@@ -13,7 +13,7 @@ The app uses **YOLOv8 + ByteTrack** for player detection and tracking, **OpenCV 
 
 [Launch GameLens AI on Hugging Face Spaces](https://huggingface.co/spaces/abhinavvathadi/gamelens-ai)
 
-## Working Demo screen shots
+## Demo Screenshots
 
 <img width="1086" height="883" alt="image" src="https://github.com/user-attachments/assets/17c69d98-9cce-4ddc-b349-02d0d94ffd5c" />
 
@@ -290,4 +290,6 @@ Uploaded user videos still run the real YOLO + ByteTrack pipeline and may be slo
 
 ## License
 
-This project is provided for educational and portfolio use. Review the licenses of underlying dependencies, including Ultralytics YOLO, before any commercial use.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+
+Note: This project uses third-party libraries and models, including Ultralytics YOLO. Users are responsible for reviewing and complying with the licenses of all external dependencies and model weights before commercial use.

@@ -1,14 +1,3 @@
----
-title: GameLens AI
-emoji: ⚽
-colorFrom: blue
-colorTo: indigo
-sdk: gradio
-app_file: app.py
-python_version: 3.11
-pinned: false
----
-
 # ⚽ GameLens AI
 
 **Computer Vision, Data Science, and LLM-Powered Soccer Analytics**
@@ -23,6 +12,19 @@ The app uses **YOLOv8 + ByteTrack** for player detection and tracking, **OpenCV 
 ## Live Demo
 
 [Launch GameLens AI on Hugging Face Spaces](https://huggingface.co/spaces/abhinavvathadi/gamelens-ai)
+
+## Working Demmo screen shots
+<img width="1086" height="883" alt="image" src="https://github.com/user-attachments/assets/17c69d98-9cce-4ddc-b349-02d0d94ffd5c" />
+
+<img width="1119" height="665" alt="image" src="https://github.com/user-attachments/assets/53195efe-5c8f-44d3-aa14-28b3b6413242" />
+
+<img width="1084" height="579" alt="image" src="https://github.com/user-attachments/assets/a2cc7ea4-7834-4662-825e-dea93832a0a5" />
+
+<img width="1062" height="534" alt="image" src="https://github.com/user-attachments/assets/b63846f1-74b0-40d5-b3dc-8a5cbf02867d" />
+
+<img width="934" height="867" alt="image" src="https://github.com/user-attachments/assets/e1e82ead-b1b1-4af5-926e-60b0515724a9" />
+
+
 
 ## Demo Results
 

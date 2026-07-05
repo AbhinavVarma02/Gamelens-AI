@@ -1,14 +1,3 @@
----
-title: GameLens AI
-emoji: ⚽
-colorFrom: green
-colorTo: blue
-sdk: gradio
-app_file: app.py
-python_version: 3.11
-pinned: false
----
-
 # ⚽ GameLens AI
 
 **Computer Vision, Data Science, and LLM-Powered Soccer Analytics**

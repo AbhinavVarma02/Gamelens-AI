@@ -13,7 +13,8 @@ The app uses **YOLOv8 + ByteTrack** for player detection and tracking, **OpenCV 
 
 [Launch GameLens AI on Hugging Face Spaces](https://huggingface.co/spaces/abhinavvathadi/gamelens-ai)
 
-## Working Demmo screen shots
+## Working Demo screen shots
+
 <img width="1086" height="883" alt="image" src="https://github.com/user-attachments/assets/17c69d98-9cce-4ddc-b349-02d0d94ffd5c" />
 
 <img width="1119" height="665" alt="image" src="https://github.com/user-attachments/assets/53195efe-5c8f-44d3-aa14-28b3b6413242" />

@@ -1,330 +1,290 @@
+---
+title: GameLens AI
+emoji: ⚽
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+app_file: app.py
+python_version: 3.11
+pinned: false
+---
+
 # ⚽ GameLens AI
 
 **Computer Vision, Data Science, and LLM-Powered Soccer Analytics**
 
-GameLens AI is a practical, end-to-end soccer video analytics app. Upload a
-short match clip and it detects and tracks players with computer vision,
-converts the video into a structured tracking dataset, computes simple
-data-science metrics and charts, and uses a small **LangGraph** multi-agent
-workflow (**GPT-4o Mini**) to produce grounded, coach-style insights and
-answer questions — all through a **Gradio** UI that runs locally or on
-**Hugging Face Spaces**.
+GameLens AI is an end-to-end soccer video analytics app that turns short match clips into structured tracking data, visual analytics, and grounded AI-generated insights.
 
-> The design principle: **Computer Vision extracts data → Data Science
-> analyzes it → LLM agents explain it.** The LLM never "watches" the video;
-> it only reasons over the structured metrics the pipeline produces.
+The app uses **YOLOv8 + ByteTrack** for player detection and tracking, **OpenCV + Pandas** for video/data processing, **Matplotlib** for visual analytics, and a **LangGraph + GPT-4o-mini** workflow for reporting and Q&A.
 
----
-# Website
-https://huggingface.co/spaces/abhinavvathadi/gamelens-ai
+> **Core idea:** Computer Vision extracts data → Data Science analyzes it → LLM agents explain it.  
+> The LLM does not watch the video. It only reasons over structured metrics produced by the pipeline.
 
-## Overview
+## Live Demo
 
-Raw sports video is hard to analyze by hand. GameLens AI turns a short clip
-into structured player-movement data and then into simple, understandable
-insights. It is intentionally an **MVP**: reliable and readable rather than
-an over-engineered research system.
+[Launch GameLens AI on Hugging Face Spaces](https://huggingface.co/spaces/abhinavvathadi/gamelens-ai)
+
+## Demo Results
+
+On the bundled 20-second soccer clip, GameLens AI produced:
+
+| Output | Result |
+|---|---:|
+| Processed frames | 400 |
+| Tracking rows | 4,718 |
+| Raw tracker IDs | 90 |
+| Stable track segments | 56 |
+| Average on-screen detections | ~11.5 |
+| Peak on-screen detections | 15 |
+| Visual analytics charts | 4 |
+| Exports | CSV + JSON |
+
+The sample demo uses cached outputs on Hugging Face CPU Spaces so visitors can see results quickly. Uploaded videos still run the real YOLO + ByteTrack pipeline.
 
 ## Features
 
-- **Video upload** through a Gradio interface, plus a fast cached sample demo button for CPU Spaces.
-- **Player detection & tracking** with YOLOv8 (nano) + ByteTrack.
-- **Spectator filtering (field ROI)** — detections in the top of the frame
-  (the stands) are ignored, so crowds don't inflate the counts.
-- **Honest counts & neutral labels** — separates raw tracker IDs and *distinct
-  stable tracks* (both over-count) from the realistic **players-on-screen**
-  estimate (peak / average concurrent), and labels stable tracks as neutral
-  **track segments** (Track Segment 1, 2, …) rather than implying real
-  identities.
-- **Annotated H.264 video** (browser-playable via bundled ffmpeg) with
-  bounding boxes, raw track IDs, a field-ROI line, and a live field count for
-  uploaded clips and reprocessed samples. The default sample demo shows the
-  original clip preview with cached metrics/charts for speed.
-- **Structured dataset** (`tracking_data.csv`) with frame, timestamp,
-  track ID, bounding-box coordinates, center point, box size, zone, per-frame
-  movement in pixels, plus `is_stable` and `display_id` (clean label).
-- **Data-science metrics**: duration, raw track IDs created, distinct stable
-  tracks, estimated / avg / peak players on screen, most active track segment,
-  activity by zone, player-count trend, most active time segment, and an
-  overall movement level.
-- **Charts**: field activity by zone, top active field track segments (clean
-  labels), field players on screen over time, and a movement heatmap.
-- **LangGraph agents** (GPT-4o Mini): Data Analyst, Sports Insight, and QA.
-- **Grounded Q&A** answered only from the computed metrics.
-- **Runs without an API key** — LLM features degrade to clear, rule-based
-  fallback text instead of crashing.
+- **Soccer video upload** through a Gradio interface
+- **Fast sample demo** using cached outputs for CPU-friendly Hugging Face deployment
+- **Player detection and tracking** with YOLOv8 nano + ByteTrack
+- **Field ROI filtering** to reduce spectator/crowd detections
+- **Stable track filtering** to reduce short-lived tracker noise
+- **H.264 annotated video output** for uploaded clips and reprocessed samples
+- **Structured tracking exports** as CSV and JSON
+- **Data-science metrics** for movement, zones, track segments, and player-count trends
+- **Four visual analytics charts**
+  - field activity by zone
+  - top active track segments
+  - on-screen detections over time
+  - movement heatmap
+- **LangGraph reporting workflow** with Data Analyst, Sports Insight, and Q&A agents
+- **Grounded Q&A** answered only from computed metrics
+- **No-key fallback** so the app still works without an OpenAI API key
 
 ## Tech Stack
 
-| Layer | Tool |
+| Layer | Tools |
 |---|---|
-| Language | Python |
-| Computer Vision | OpenCV |
-| Detection | Ultralytics YOLO (`yolov8n.pt`) |
-| Tracking | ByteTrack (via Ultralytics) |
-| Data | Pandas, NumPy |
-| Charts | Matplotlib |
-| LLM Orchestration | LangGraph |
-| LLM Provider | OpenAI API (`gpt-4o-mini`) |
 | UI | Gradio |
 | Deployment | Hugging Face Spaces |
+| Computer Vision | OpenCV |
+| Detection | Ultralytics YOLOv8 |
+| Tracking | ByteTrack |
+| Data Processing | Pandas, NumPy |
+| Visualization | Matplotlib |
+| LLM Workflow | LangGraph |
+| LLM Provider | OpenAI GPT-4o-mini |
+| Video Encoding | imageio-ffmpeg |
 
 ## Architecture
 
 ```text
-User uploads video or selects cached sample demo (Gradio)
+User uploads video or loads cached sample demo
         │
         ▼
-OpenCV read + resize + frame skip     ── src/video_processor.py
+Gradio UI
         │
-        ▼
-YOLO detection + ByteTrack tracking   ── src/detect_track.py
+        ├── Fast sample path
+        │       └── sample_outputs/
+        │           ├── cached metrics
+        │           ├── cached charts
+        │           ├── cached report
+        │           └── CSV/JSON downloads
         │
-        ├── annotated_video.mp4
-        ▼
-Structured tracking rows → CSV        ── src/analytics.py
-        │
-        ▼
-Data-science metrics → metrics.json   ── src/analytics.py
-        │
-        ├────────────► Charts (PNG)   ── src/visualizations.py
-        ▼
-LangGraph agents (GPT-4o Mini)        ── src/langgraph_agents.py + prompts.py
-   Data Analyst → Sports Insight → QA
-        │
-        ▼
-Report + Q&A shown in Gradio UI       ── app.py
+        └── Real YOLO path
+                │
+                ▼
+        OpenCV video read + resize + frame skip
+                │
+                ▼
+        YOLOv8 person detection + ByteTrack tracking
+                │
+                ├── H.264 annotated video
+                ▼
+        Structured tracking rows
+                │
+                ├── tracking_data.csv
+                ├── metrics.json
+                └── visual analytics charts
+                │
+                ▼
+        LangGraph reporting + Q&A
+                │
+                ▼
+        Grounded report and answers in the UI
 ```
 
 ## How It Works
 
-1. **Fast sample path:** click **Load Fast Sample Demo** to read only the
-   precomputed files in `sample_outputs/`. This non-queued path does not run
-   YOLO, OpenCV video processing, Matplotlib chart generation, OpenAI, or
-   LangGraph, so Hugging Face CPU Spaces can show metrics, charts, report text,
-   downloads, and the sample preview quickly.
-2. **Real YOLO path:** click **Analyze Uploaded Video / Reprocess with YOLO**
-   with an uploaded clip, or enable **Reprocess sample with YOLO** in Advanced
-   options. This queued path reads the clip with OpenCV, optionally shrinks wide
-   frames, and processes every Nth frame for speed.
-3. **Track** the `person` class with YOLOv8n + ByteTrack.
-4. **Filter spectators (field ROI)** — YOLO detects *all* humans, including
-   people in the stands. Detections whose center is above
-   `field_roi_top_ratio × frame_height` (the top of the frame) are dropped, so
-   only field-area detections are kept.
-5. **Structure** the field detections into a tidy CSV, adding a
-   left/middle/right `zone` and per-frame `movement_pixels`.
-6. **Find stable track segments** — a track ID that appears in at least
-   `min_track_frames` processed frames is a *stable field track segment*; each
-   gets a neutral sequential label (`display_id` = Track Segment 1, 2, …).
-   Short-lived / flickering IDs are excluded from segment-level metrics.
-7. **Analyze** with Pandas/NumPy → `metrics.json`. Segment-level metrics use
-   stable field tracks; spatial metrics (zone, heatmap) use all field
-   detections; both raw and stable counts are reported.
-8. **Visualize** the metrics as Matplotlib charts.
-9. **Explain** the metrics with three LangGraph agents that only see the
-   structured numbers, then answer user questions from the same metrics.
+### 1. Fast Sample Demo
 
-### How many players? (raw IDs vs. stable tracks vs. on-screen)
+The **Load Fast Sample Demo** button reads precomputed files from `sample_outputs/`.
 
-A tracker creates **far more IDs than there are players**. YOLO detects
-spectators too, and — crucially — ByteTrack assigns a **new ID whenever a
-player is occluded or leaves and re-enters the frame** (there is no
-re-identification, which is intentionally out of scope). So even *after*
-filtering, the count of distinct tracks over-counts real players. GameLens AI
-reports three numbers so nothing is misleading:
+This path does **not** run YOLO, OpenCV video processing, Matplotlib chart generation, OpenAI, or LangGraph. It is designed so the deployed Hugging Face Space can show a complete demo quickly on CPU.
 
-| Metric | Meaning | Use it as… |
+### 2. Real Video Analysis
+
+For uploaded videos, or when **Reprocess sample with YOLO** is enabled, the app runs the real pipeline:
+
+1. Read the video with OpenCV
+2. Resize wide frames for faster CPU processing
+3. Process every Nth frame using frame skipping
+4. Detect people with YOLOv8
+5. Track detections with ByteTrack
+6. Filter detections using a field ROI
+7. Generate tracking rows, metrics, charts, and annotated video
+8. Pass structured metrics to LangGraph agents for report generation and Q&A
+
+## Tracking Metrics Explained
+
+A tracker can create more IDs than the number of real players. This happens because YOLO can detect spectators, and ByteTrack may assign a new ID after occlusion, camera cuts, or a player leaving and re-entering the frame.
+
+GameLens AI reports multiple counts to avoid misleading results:
+
+| Metric | Meaning | Interpretation |
 |---|---|---|
-| `raw_track_ids_created` | Every ID the tracker made (incl. the stands) | not a headcount |
-| `distinct_stable_tracks` | Field IDs that persisted ≥ `min_track_frames` | an **upper bound** |
-| `estimated_players_on_screen` (+ `avg_players_on_screen`) | Peak / average players tracked **at the same time** | the **realistic** count |
+| `raw_track_ids_created` | Every ID created by the tracker | Not a headcount |
+| `distinct_stable_tracks` | Field-area track IDs that persisted long enough | Upper bound |
+| `estimated_players_on_screen` | Peak concurrent on-screen detections | More realistic count |
+| `avg_players_on_screen` | Average concurrent on-screen detections | More realistic count |
 
-Example: a clip may show `90` raw IDs and `56` distinct stable tracks, but only
-`~12` players on screen on average (peak `15`) — that ~12–15 is the honest
-figure, and the AI report is grounded to say so.
+Example from the sample clip:
 
-This is **pixel-based tracking, not real-world player identity** — labels like
-Track Segment 1 are stable *within a clip* only, are not confirmed players, and
-are not jersey numbers.
+```text
+Raw tracker IDs: 90
+Stable track segments: 56
+Average on-screen detections: ~11.5
+Peak on-screen detections: 15
+```
+
+The app labels tracked entities as **Track Segment 1, Track Segment 2, ...** instead of real player names or jersey numbers. These are tracker labels within a clip, not confirmed player identities.
 
 ## LangGraph Agent Workflow
 
-| Agent | Responsibility |
-|---|---|
-| **Data Analyst** | Explains the metrics in plain language. |
-| **Sports Insight** | Turns metrics into short, hedged, coach-style notes. |
-| **QA** | Answers a user question using only the metrics. |
+GameLens AI uses a lightweight LangGraph workflow to convert metrics into readable insights.
 
-The report graph runs `Data Analyst → Sports Insight`. A separate one-node
-QA graph answers follow-up questions so they don't re-run the whole report.
-Prompts live in [`src/prompts.py`](src/prompts.py) and keep the model
-grounded (no invented names, scores, teams, or real-world distances). If the
-metrics can't answer a question, the QA agent says the MVP does not measure
-that yet.
+| Agent | Role |
+|---|---|
+| Data Analyst | Explains the computed metrics in plain language |
+| Sports Insight | Converts metrics into short, careful soccer-style observations |
+| QA Agent | Answers user questions using only available metrics |
+
+The prompts are designed to avoid unsupported claims. The AI report does not invent teams, player names, scores, tactics, possession, passes, shots, or ball events.
+
+If no `OPENAI_API_KEY` is provided, the app uses grounded fallback text instead of crashing.
 
 ## Folder Structure
 
 ```text
 gamelens-ai/
-├── app.py                     # Gradio app (entry point)
-├── requirements.txt           # Python dependencies
-├── packages.txt               # apt packages for Hugging Face Spaces (OpenCV libs)
+├── app.py
+├── requirements.txt
+├── packages.txt
 ├── README.md
-├── PROGRESS.md                # Running handoff / progress log
-├── .gitignore
+├── PROGRESS.md
 ├── .env.example
+├── .gitignore
 ├── src/
 │   ├── __init__.py
-│   ├── video_processor.py     # OpenCV read/write helpers
-│   ├── detect_track.py        # YOLO + ByteTrack tracking
-│   ├── analytics.py           # CSV + metrics
-│   ├── visualizations.py      # Matplotlib charts
-│   ├── langgraph_agents.py    # 3-agent LangGraph workflow
-│   ├── prompts.py             # LLM prompt templates
-│   └── utils.py               # Shared config + helpers
-├── sample_videos/             # Local sample clip + notes
-│   ├── README.md
-│   └── default_soccer_clip.mp4 # Uploaded separately to HF Space storage
-├── sample_outputs/            # Cached sample metrics/charts/report for fast demo
+│   ├── video_processor.py
+│   ├── detect_track.py
+│   ├── analytics.py
+│   ├── visualizations.py
+│   ├── langgraph_agents.py
+│   ├── prompts.py
+│   └── utils.py
+├── sample_outputs/
 │   ├── README.md
 │   ├── sample_metrics.json
 │   ├── sample_tracking_data.csv
 │   ├── sample_report.txt
 │   └── sample_chart_*.png
-├── outputs/                   # Generated artifacts (git-ignored)
+├── sample_videos/
+│   └── README.md
+├── outputs/
 │   └── .gitkeep
 └── notebooks/
     └── README.md
 ```
 
-## How to Run Locally
+## Run Locally
 
-**Python 3.11–3.13 recommended** (verified on 3.13). Some Python 3.10 Windows
-wheel combinations of this ML stack can be unstable — see Troubleshooting.
+Python 3.11 or later is recommended.
 
 ```bash
-# 1) Create and activate a virtual environment (use Python 3.13 if available)
-py -3.13 -m venv .venv          # Windows;  macOS/Linux: python3.13 -m venv .venv
-# Windows (PowerShell). If activation is blocked by the execution policy, run
-# once:  Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+# 1. Create a virtual environment
+python -m venv .venv
+
+# 2. Activate it
+# Windows PowerShell
 .venv\Scripts\Activate.ps1
-# macOS / Linux:
+
+# macOS/Linux
 source .venv/bin/activate
 
-# 2) Install requirements
+# 3. Install dependencies
 pip install -r requirements.txt
 
-# 3) Copy the example env file and add your key (optional)
+# 4. Optional: create a local env file for GPT output
 cp .env.example .env
-#   then edit .env and set OPENAI_API_KEY=...   (leave blank to use fallback)
 
-# 4) Run the app
+# 5. Run the app
 python app.py
 ```
 
-Open the local URL that Gradio prints (usually `http://127.0.0.1:7860`),
-click **Load Fast Sample Demo** for the cached sample, or upload a short soccer clip and click **Analyze Uploaded Video / Reprocess with YOLO**. To run the full detector/tracker on the sample clip, open Advanced options, enable **Reprocess sample with YOLO**, then click the real-processing button.
+Then open the local Gradio URL printed in the terminal.
 
-> The first real upload/reprocess run downloads the small `yolov8n.pt` weights automatically. Hugging Face metadata pins Python 3.11 because it is safer for this CV/Gradio/Ultralytics stack than Python 3.13.
-> Without an `OPENAI_API_KEY`, the app still works and shows grounded,
-> rule-based text instead of GPT-4o Mini output.
+Without an OpenAI API key, the app still runs and uses fallback report/Q&A text.
 
-## Deployment on Hugging Face Spaces
+## Environment Variables
 
-1. **Create a new Space** at <https://huggingface.co/new-space>.
-2. **Select the Gradio SDK.**
-3. **Push the repo files** (`app.py`, `requirements.txt`, `packages.txt`,
-   `README.md`, `src/`, `sample_videos/README.md`, `sample_outputs/`,
-   `notebooks/README.md`, and `outputs/.gitkeep`). Do **not** commit `.mp4`
-   videos as normal Git blobs.
-4. **Upload the sample video separately** with Hugging Face Hub/Xet-compatible
-   storage so it lands at the same path the app expects:
+| Variable | Required | Purpose |
+|---|---|---|
+| `OPENAI_API_KEY` | No | Enables GPT-4o-mini report and Q&A generation |
+| `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini` |
 
-   ```bash
-   hf upload abhinavvathadi/gamelens-ai sample_videos/default_soccer_clip.mp4 sample_videos/default_soccer_clip.mp4 --repo-type space
-   ```
+Do not commit `.env` or any real API keys.
 
-   Locally and on the Space, the sample video path remains
-   `sample_videos/default_soccer_clip.mp4`.
-5. **Add your secret**: in the Space -> *Settings* -> *Variables and secrets*,
-   add `OPENAI_API_KEY` (and optionally `OPENAI_MODEL=gpt-4o-mini`).
-6. **Run the app.** The Space builds automatically; then upload a short clip
-   and analyze. Users without their own clip can click **Load Fast Sample Demo**
-   for a cached CPU-friendly demo.
+## Hugging Face Notes
 
-> Notes: `packages.txt` installs the system libraries OpenCV needs on a
-> headless Space (`libgl1`, `libglib2.0-0`). The cached sample path avoids
-> YOLO startup/processing for the default demo. Uploaded clips still run the
-> real YOLO + ByteTrack pipeline and may be slow on CPU Basic; keep *frame skip*
-> high and *max width* low for faster processing.
+The deployed Space uses:
 
-## Troubleshooting
+- `app.py` as the Gradio entry point
+- Python 3.11 for deployment stability
+- `packages.txt` for Linux/OpenCV system libraries
+- cached sample outputs for fast CPU demo behavior
+- separate Hugging Face storage for the bundled MP4 sample video
 
-- **Random crash / weird error during `import` (e.g. `re.error: bad escape`,
-  `'str' object is not callable`, `internal error in regular expression
-  engine`, or exit code `-1073741819`)** → a native library binary conflict in
-  that particular environment, not a code bug. It is intermittent, so simply
-  **re-run** `python app.py`. If it happens often, use **Python 3.13** (most
-  stable here) and recreate the venv from scratch:
-  `py -3.13 -m venv .venv` then `pip install -r requirements.txt`.
-- **PowerShell: "running scripts is disabled on this system"** when activating
-  the venv → run once: `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
-- **App crashes on startup on Windows with exit code `-1073741819`
-  (0xC0000005)** → two OpenCV builds are installed at the same time. Keep only
-  one: `pip uninstall -y opencv-python-headless` (leaves `opencv-python`). The
-  pinned `requirements.txt` already avoids this; it only happens if the headless
-  build was installed separately.
-- **A one-off import error mentioning `packaging` right after installing** →
-  usually a half-finished install; just run `python app.py` again.
-- **Tracking error mentioning `lap`** → `pip install lap` (already pinned in
-  `requirements.txt`).
-- **`cv2` import error about `libGL.so.1` on a server/Space** → make sure
-  `packages.txt` (with `libgl1` and `libglib2.0-0`) is present in the repo.
-- **`OpenH264`/`libopenh264` VideoWriter errors, or the annotated video won't
-  play** → the app now writes H.264 via the bundled `imageio-ffmpeg` (no system
-  ffmpeg or OpenH264 needed). Make sure `imageio` and `imageio-ffmpeg` are
-  installed (`pip install -r requirements.txt`). It falls back to OpenCV `mp4v`
-  only if imageio is missing.
+The sample MP4 is not committed as a normal Git blob. It is uploaded separately to Hugging Face Hub/Xet storage at:
+
+```text
+sample_videos/default_soccer_clip.mp4
+```
+
+Uploaded user videos still run the real YOLO + ByteTrack pipeline and may be slower on Hugging Face CPU Basic.
 
 ## Limitations
 
-- This is **pixel-based tracking, not real-world player identity tracking**.
-  Labelled entities are **track segments** (Track Segment 1, 2, …), not
-  confirmed players — one player can span several segments.
-- **The AI report describes movement / positioning only.** Because the MVP
-  tracks neither the ball nor teams, it does not (and is instructed not to)
-  claim possession, passes, shots, attacking / defending, "key plays", or team
-  strategy — high movement can only indicate higher movement / positioning
-  activity.
-- **Neither the raw ID count nor the distinct-track count is a headcount.**
-  Both over-count; use `estimated_players_on_screen` / `avg_players_on_screen`
-  for "how many players".
-- **ByteTrack IDs may skip numbers or switch** after occlusion or camera cuts,
-  so one real player can span several IDs — this is why `distinct_stable_tracks`
-  is only an upper bound (no re-identification is done, by design).
-- **Spectator filtering is a simple horizontal ROI**, not true field detection.
-  If the camera angle is unusual (e.g. players high in the frame), tune the
-  *Field area top ratio*; some crowd members near the field edge may still slip
-  through.
-- Movement is measured in **image pixels, not real-world meters**.
-- The system does **not** identify real players by name or jersey number.
-- **No accurate ball tracking**, pass detection, xG, or formation analysis
-  in this MVP.
-- Tactical insights are **approximate** and based only on extracted metrics.
-- The **LLM does not watch the video**; it reasons over the metrics only.
-- Performance depends on video quality, camera angle, and hardware.
+- This is pixel-based tracking, not real-world player identity tracking.
+- Track Segment labels are not jersey numbers or real identities.
+- One real player can appear as multiple track segments after occlusion or re-entry.
+- Raw tracker IDs and stable track counts are not true player headcounts.
+- Movement is measured in image pixels, not meters.
+- Field ROI filtering is a simple horizontal filter, not full field segmentation.
+- The app does not track the ball.
+- The app does not detect passes, shots, possession, formations, xG, or team tactics.
+- The LLM does not watch the video. It only explains structured metrics.
+- Real video processing speed depends on clip length, resolution, camera angle, and hardware.
 
 ## Future Improvements
 
-- Near-real-time / live-like mode (webcam or looping clip).
-- Team classification via jersey-color clustering.
-- Richer heatmaps and player movement trails.
-- Optional ball detection.
-- LangSmith tracing for the agent workflow.
-
+- Team classification using jersey-color clustering
+- Optional ball detection
+- Richer movement trails and heatmaps
+- Better field segmentation
+- Re-identification to reduce track fragmentation
+- Near-real-time webcam or live-like mode
+- LangSmith tracing for the agent workflow
 
 ## License
 
-Provided for educational and portfolio use. Review the licenses of the
-underlying dependencies (Ultralytics YOLO, etc.) before any commercial use.
+This project is provided for educational and portfolio use. Review the licenses of underlying dependencies, including Ultralytics YOLO, before any commercial use.
